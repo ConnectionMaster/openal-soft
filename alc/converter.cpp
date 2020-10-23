@@ -132,14 +132,24 @@ void Mono2Stereo(ALfloat *RESTRICT dst, const void *src, const size_t frames) no
 }
 
 template<DevFmtType T>
-void Stereo2Mono(ALfloat *RESTRICT dst, const void *src, const size_t frames) noexcept
+void Multi2Mono(ALuint chanmask, const size_t step, const float scale, float *RESTRICT dst,
+    const void *src, const size_t frames) noexcept
 {
     using SampleType = typename DevFmtTypeTraits<T>::Type;
 
     const SampleType *ssrc = static_cast<const SampleType*>(src);
+    std::fill_n(dst, frames, 0.0f);
+    for(size_t c{0};chanmask;++c)
+    {
+        if LIKELY((chanmask&1))
+        {
+            for(size_t i{0u};i < frames;i++)
+                dst[i] += LoadSample<T>(ssrc[i*step + c]);
+        }
+        chanmask >>= 1;
+    }
     for(size_t i{0u};i < frames;i++)
-        dst[i] = (LoadSample<T>(ssrc[i*2 + 0])+LoadSample<T>(ssrc[i*2 + 1])) *
-                 0.707106781187f;
+        dst[i] *= scale;
 }
 
 } // namespace
@@ -325,11 +335,12 @@ ALuint SampleConverter::convert(const ALvoid **src, ALuint *srcframes, ALvoid *d
 
 void ChannelConverter::convert(const ALvoid *src, ALfloat *dst, ALuint frames) const
 {
-    if(mSrcChans == DevFmtStereo && mDstChans == DevFmtMono)
+    if(mDstChans == DevFmtMono)
     {
+        const float scale{std::sqrt(1.0f / static_cast<float>(POPCNT32(mChanMask)))};
         switch(mSrcType)
         {
-#define HANDLE_FMT(T) case T: Stereo2Mono<T>(dst, src, frames); break
+#define HANDLE_FMT(T) case T: Multi2Mono<T>(mChanMask, mSrcStep, scale, dst, src, frames); break
         HANDLE_FMT(DevFmtByte);
         HANDLE_FMT(DevFmtUByte);
         HANDLE_FMT(DevFmtShort);
@@ -340,7 +351,7 @@ void ChannelConverter::convert(const ALvoid *src, ALfloat *dst, ALuint frames) c
 #undef HANDLE_FMT
         }
     }
-    else if(mSrcChans == DevFmtMono && mDstChans == DevFmtStereo)
+    else if(mChanMask == 0x1 && mDstChans == DevFmtStereo)
     {
         switch(mSrcType)
         {
@@ -355,6 +366,4 @@ void ChannelConverter::convert(const ALvoid *src, ALfloat *dst, ALuint frames) c
 #undef HANDLE_FMT
         }
     }
-    else
-        LoadSamples(dst, src, 1u, mSrcType, frames * ChannelsFromDevFmt(mSrcChans, 0));
 }

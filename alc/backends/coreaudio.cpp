@@ -320,6 +320,7 @@ struct CoreAudioCapture final : public BackendBase {
     SampleConverterPtr mConverter;
 
     RingBufferPtr mRing{nullptr};
+    std::vector<al::byte> mBuffer;
 
     DEF_NEWDEL(CoreAudioCapture)
 };
@@ -356,15 +357,22 @@ OSStatus CoreAudioCapture::RecordProc(AudioUnitRenderActionFlags*,
     }
     else
     {
-        const auto remaining = static_cast<ALuint>(inNumberFrames - rec_vec.first.len);
-        audiobuf.list.mNumberBuffers = 2;
+        if (mBuffer.size() < inNumberFrames * mFormat.mBytesPerFrame) {
+            mBuffer.resize(inNumberFrames * mFormat.mBytesPerFrame, al::byte());
+        }
+        audiobuf.list.mNumberBuffers = 1;
         audiobuf.list.mBuffers[0].mNumberChannels = mFormat.mChannelsPerFrame;
-        audiobuf.list.mBuffers[0].mData = rec_vec.first.buf;
-        audiobuf.list.mBuffers[0].mDataByteSize = static_cast<UInt32>(rec_vec.first.len) *
-            mFormat.mBytesPerFrame;
-        audiobuf.list.mBuffers[1].mNumberChannels = mFormat.mChannelsPerFrame;
-        audiobuf.list.mBuffers[1].mData = rec_vec.second.buf;
-        audiobuf.list.mBuffers[1].mDataByteSize = remaining * mFormat.mBytesPerFrame;
+        audiobuf.list.mBuffers[0].mData = mBuffer.data();
+        audiobuf.list.mBuffers[0].mDataByteSize = inNumberFrames * mFormat.mBytesPerFrame;
+        // const auto remaining = static_cast<ALuint>(inNumberFrames - rec_vec.first.len);
+        // audiobuf.list.mNumberBuffers = 2;
+        // audiobuf.list.mBuffers[0].mNumberChannels = mFormat.mChannelsPerFrame;
+        // audiobuf.list.mBuffers[0].mData = rec_vec.first.buf;
+        // audiobuf.list.mBuffers[0].mDataByteSize = static_cast<UInt32>(rec_vec.first.len) *
+        //     mFormat.mBytesPerFrame;
+        // audiobuf.list.mBuffers[1].mNumberChannels = mFormat.mChannelsPerFrame;
+        // audiobuf.list.mBuffers[1].mData = rec_vec.second.buf;
+        // audiobuf.list.mBuffers[1].mDataByteSize = remaining * mFormat.mBytesPerFrame;
     }
     OSStatus err{AudioUnitRender(mAudioUnit, &flags, inTimeStamp, audiobuf.list.mNumberBuffers,
         inNumberFrames, &audiobuf.list)};
@@ -372,6 +380,17 @@ OSStatus CoreAudioCapture::RecordProc(AudioUnitRenderActionFlags*,
     {
         ERR("AudioUnitRender error: %d\n", err);
         return err;
+    }
+
+    if (rec_vec.first.len < inNumberFrames) {
+        const auto remaining = static_cast<ALuint>(inNumberFrames - rec_vec.first.len);
+        const auto mData0 = rec_vec.first.buf;
+        const auto mDataByteSize0 = static_cast<UInt32>(rec_vec.first.len) *
+            mFormat.mBytesPerFrame;
+        memcpy(mData0, mBuffer.data(), mDataByteSize0);
+        const auto mData1 = rec_vec.second.buf;
+        const auto mDataByteSize1 = remaining * mFormat.mBytesPerFrame;
+        memcpy(mData1, mBuffer.data() + mDataByteSize0, mDataByteSize1);
     }
 
     mRing->writeAdvance(inNumberFrames);

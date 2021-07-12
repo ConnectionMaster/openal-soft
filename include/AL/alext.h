@@ -578,6 +578,11 @@ AL_API void AL_APIENTRY alGetPointervSOFT(ALenum pname, void **values);
 #endif
 #endif
 
+#ifndef ALC_SOFT_device_clock_exact
+#define ALC_SOFT_device_clock_exact 1
+#define AL_SAMPLE_OFFSET_CLOCK_EXACT_SOFT        0x1204
+#endif
+
 #ifdef __cplusplus
 }
 #endif

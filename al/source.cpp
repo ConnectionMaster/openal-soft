@@ -943,6 +943,9 @@ enum SourceProp : ALenum {
     /* ALC_SOFT_device_clock */
     srcSampleOffsetClockSOFT = AL_SAMPLE_OFFSET_CLOCK_SOFT,
     srcSecOffsetClockSOFT = AL_SEC_OFFSET_CLOCK_SOFT,
+
+    /* ALC_SOFT_device_clock_exact */
+    srcSampleOffsetClockExactSOFT = AL_SAMPLE_OFFSET_CLOCK_EXACT_SOFT,
 };
 
 
@@ -1006,6 +1009,7 @@ ALuint FloatValsByProp(ALenum prop)
         break; /* i/i64 only */
     case AL_SAMPLE_OFFSET_LATENCY_SOFT:
     case AL_SAMPLE_OFFSET_CLOCK_SOFT:
+    case AL_SAMPLE_OFFSET_CLOCK_EXACT_SOFT:
         break; /* i64 only */
     }
     return 0;
@@ -1066,6 +1070,7 @@ ALuint DoubleValsByProp(ALenum prop)
         break; /* i/i64 only */
     case AL_SAMPLE_OFFSET_LATENCY_SOFT:
     case AL_SAMPLE_OFFSET_CLOCK_SOFT:
+    case AL_SAMPLE_OFFSET_CLOCK_EXACT_SOFT:
         break; /* i64 only */
     }
     return 0;
@@ -1313,6 +1318,7 @@ bool SetSourcefv(ALsource *Source, ALCcontext *Context, SourceProp prop, const a
     case AL_AUXILIARY_SEND_FILTER:
     case AL_SAMPLE_OFFSET_LATENCY_SOFT:
     case AL_SAMPLE_OFFSET_CLOCK_SOFT:
+    case AL_SAMPLE_OFFSET_CLOCK_EXACT_SOFT:
         break;
     }
 
@@ -1635,6 +1641,7 @@ bool SetSourceiv(ALsource *Source, ALCcontext *Context, SourceProp prop, const a
     case AL_SEC_OFFSET_LATENCY_SOFT:
     case AL_SEC_OFFSET_CLOCK_SOFT:
     case AL_SAMPLE_OFFSET_CLOCK_SOFT:
+    case AL_SAMPLE_OFFSET_CLOCK_EXACT_SOFT:
     case AL_STEREO_ANGLES:
         break;
     }
@@ -1657,6 +1664,7 @@ bool SetSourcei64v(ALsource *Source, ALCcontext *Context, SourceProp prop, const
     case AL_SOURCE_STATE:
     case AL_SAMPLE_OFFSET_LATENCY_SOFT:
     case AL_SAMPLE_OFFSET_CLOCK_SOFT:
+    case AL_SAMPLE_OFFSET_CLOCK_EXACT_SOFT:
         /* Query only */
         SETERR_RETURN(Context, AL_INVALID_OPERATION, false,
             "Setting read-only source property 0x%04x", prop);
@@ -1941,6 +1949,7 @@ bool GetSourcedv(ALsource *Source, ALCcontext *Context, SourceProp prop, const a
     case AL_AUXILIARY_SEND_FILTER:
     case AL_SAMPLE_OFFSET_LATENCY_SOFT:
     case AL_SAMPLE_OFFSET_CLOCK_SOFT:
+    case AL_SAMPLE_OFFSET_CLOCK_EXACT_SOFT:
         break;
     }
 
@@ -2107,6 +2116,7 @@ bool GetSourceiv(ALsource *Source, ALCcontext *Context, SourceProp prop, const a
 
     case AL_SAMPLE_OFFSET_LATENCY_SOFT:
     case AL_SAMPLE_OFFSET_CLOCK_SOFT:
+    case AL_SAMPLE_OFFSET_CLOCK_EXACT_SOFT:
         break; /* i64 only */
     case AL_SEC_OFFSET_LATENCY_SOFT:
     case AL_SEC_OFFSET_CLOCK_SOFT:
@@ -2161,6 +2171,20 @@ bool GetSourcei64v(ALsource *Source, ALCcontext *Context, SourceProp prop, const
         CHECKSIZE(values, 2);
         values[0] = GetSourceSampleOffset(Source, Context, &srcclock);
         values[1] = srcclock.count();
+        return true;
+
+    case AL_SAMPLE_OFFSET_CLOCK_EXACT_SOFT:
+        CHECKSIZE(values, 3);
+        /* Get the source offset with the clock time first. Then get the clock
+         * time with the device latency. Order is important.
+         */
+        values[0] = GetSourceSampleOffset(Source, Context, &srcclock);
+        {
+            std::lock_guard<std::mutex> _{device->StateLock};
+            clocktime = GetClockLatency(device);
+        }
+        values[1] = clocktime.ClockTime.count();
+        values[2] = clocktime.ExactDeviceTime.count();
         return true;
 
     /* 1x float/double */

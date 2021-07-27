@@ -3086,7 +3086,7 @@ START_API_FUNC
         alcSetError(dev.get(), ALC_INVALID_VALUE);
         return;
     }
-    if(!dev || dev->Type == DeviceType::Capture)
+    if(!dev || (dev->Type == DeviceType::Capture && pname != ALC_DEVICE_LATENCY_SOFT))
     {
         auto ivals = al::vector<int>(static_cast<uint>(size));
         size_t got{GetIntegerv(dev.get(), pname, ivals)};
